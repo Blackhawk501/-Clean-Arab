@@ -104,26 +104,49 @@ $btnRemoveEdge.Size = New-Object System.Drawing.Size(350, 60)
 $btnRemoveEdge.BackColor = [System.Drawing.Color]::DarkRed
 $btnRemoveEdge.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
 $btnRemoveEdge.Add_Click({
-    $msg = [System.Windows.Forms.MessageBox]::Show("This will force remove Microsoft Edge from its roots. Are you sure?", "Warning", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+    $msg = [System.Windows.Forms.MessageBox]::Show("This will FORCE DESTROY ALL Microsoft Edge versions, updates, and folders. Are you sure?", "Warning", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
     if ($msg -eq 'Yes') {
-        Stop-Process -Name msedge -Force -ErrorAction SilentlyContinue
+        # إيقاف جميع عمليات إيدج بمختلف أنواعها
+        $edgeProcesses = @("msedge", "MicrosoftEdgeUpdate", "msedgewebview2", "edge")
+        foreach ($proc in $edgeProcesses) { Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue }
         
-        # الطريقة الرسمية والقوية لحذف إيدج من جذوره عبر ملف التثبيت
+        # محاولة الحذف بالطريقة الرسمية أولاً
         $edgePaths = @(
             "C:\Program Files (x86)\Microsoft\Edge\Application\*\Installer\setup.exe",
+            "C:\Program Files (x86)\Microsoft\EdgeUpdate\*\setup.exe",
             "C:\Program Files\Microsoft\Edge\Application\*\Installer\setup.exe"
         )
-        $installer = Resolve-Path $edgePaths -ErrorAction SilentlyContinue | Select-Object -Last 1
-        if ($installer) {
-            Start-Process -FilePath $installer.Path -ArgumentList "--uninstall --system-level --verbose-logging --force-uninstall" -Wait -NoNewWindow
+        foreach ($path in $edgePaths) {
+            $installer = Resolve-Path $path -ErrorAction SilentlyContinue | Select-Object -Last 1
+            if ($installer) {
+                Start-Process -FilePath $installer.Path -ArgumentList "--uninstall --system-level --verbose-logging --force-uninstall" -Wait -NoNewWindow -ErrorAction SilentlyContinue
+            }
         }
         
-        # تجاهل الأخطاء التي تظهر من تطبيقات النظام المحمية
-        Get-AppxPackage *MicrosoftEdge* -AllUsers | ForEach-Object { Remove-AppxPackage $_.PackageFullName -AllUsers -ErrorAction SilentlyContinue }
+        # الحذف الإجباري (النووي) لمجلدات إيدج وتحديثاته من جذورها
+        $edgeFolders = @(
+            "C:\Program Files (x86)\Microsoft\Edge",
+            "C:\Program Files (x86)\Microsoft\EdgeUpdate",
+            "C:\Program Files (x86)\Microsoft\EdgeCore",
+            "C:\Program Files (x86)\Microsoft\EdgeWebView",
+            "C:\Program Files\Microsoft\Edge"
+        )
+        foreach ($folder in $edgeFolders) {
+            if (Test-Path $folder) {
+                # أخذ صلاحيات المجلدات بالقوة لحذفها
+                cmd.exe /c "takeown /f `"$folder`" /r /d y" | Out-Null
+                cmd.exe /c "icacls `"$folder`" /grant administrators:F /t" | Out-Null
+                Remove-Item -Path $folder -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
         
-        New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\EdgeUpdate" -Name "DoNotUpdateToEdgeWithChromium" -Value 1 -PropertyType DWORD -Force -ErrorAction SilentlyContinue
+        # منع الويندوز من إعادة تثبيت أو تحديث إيدج نهائياً
+        $regPath = "HKLM:\SOFTWARE\Microsoft\EdgeUpdate"
+        if (!(Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
+        Set-ItemProperty -Path $regPath -Name "DoNotUpdateToEdgeWithChromium" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $regPath -Name "UpdateDefault" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
         
-        [System.Windows.Forms.MessageBox]::Show("Microsoft Edge has been successfully removed/disabled.", "Done")
+        [System.Windows.Forms.MessageBox]::Show("ALL Microsoft Edge versions, updates, and folders have been completely NUKED! ☢️", "Done")
     }
 })
 
@@ -175,10 +198,24 @@ $btnCleanTemp.Add_Click({
     [System.Windows.Forms.MessageBox]::Show("Temporary and junk files have been deleted.", "Done")
 })
 
+$btnRestorePoint = New-Object System.Windows.Forms.Button
+$btnRestorePoint.Text = "Create System Restore Point"
+$btnRestorePoint.Location = New-Object System.Drawing.Point(50, 350)
+$btnRestorePoint.Size = New-Object System.Drawing.Size(350, 60)
+$btnRestorePoint.BackColor = [System.Drawing.Color]::DarkGreen
+$btnRestorePoint.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+$btnRestorePoint.Add_Click({
+    [System.Windows.Forms.MessageBox]::Show("Creating restore point... This might take a minute, please wait.", "Info")
+    Enable-ComputerRestore -Drive "C:\" -ErrorAction SilentlyContinue
+    Checkpoint-Computer -Description "Clean Arab Checkpoint" -RestorePointType "MODIFY_SETTINGS" -ErrorAction SilentlyContinue
+    [System.Windows.Forms.MessageBox]::Show("System Restore Point 'Clean Arab Checkpoint' created successfully!", "Success")
+})
+
 $tabTweaks.Controls.Add($btnRemoveEdge)
 $tabTweaks.Controls.Add($btnOptimizeCPU)
 $tabTweaks.Controls.Add($btnBoostPing)
 $tabTweaks.Controls.Add($btnCleanTemp)
+$tabTweaks.Controls.Add($btnRestorePoint)
 
 # ==========================================
 # التبويب الثالث: برامج بدء التشغيل (Startup Manager)
