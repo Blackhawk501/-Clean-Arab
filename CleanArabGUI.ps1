@@ -56,8 +56,9 @@ $btnInstallApp.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Dra
 $btnInstallApp.Add_Click({
     if ($listBoxApps.SelectedItem) {
         $selectedApp = $listBoxApps.SelectedItem
-        [System.Windows.Forms.MessageBox]::Show("Starting installation for $selectedApp. Please wait...", "Info")
-        Start-Process "winget" -ArgumentList "install --id $selectedApp -e --accept-package-agreements --accept-source-agreements" -Wait -NoNewWindow
+        [System.Windows.Forms.MessageBox]::Show("Starting installation for $selectedApp. A black window will appear to show progress.", "Info")
+        # استخدام cmd /c لتجنب مشكلة عدم تعرف النظام على مسار winget كمسؤول
+        Start-Process "cmd.exe" -ArgumentList "/c winget install --id $selectedApp -e --accept-package-agreements --accept-source-agreements" -Wait
         [System.Windows.Forms.MessageBox]::Show("$selectedApp Installed Successfully!", "Success")
     }
 })
@@ -71,8 +72,8 @@ $btnUpdateApp.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Draw
 $btnUpdateApp.Add_Click({
     if ($listBoxApps.SelectedItem) {
         $selectedApp = $listBoxApps.SelectedItem
-        [System.Windows.Forms.MessageBox]::Show("Starting update for $selectedApp. Please wait...", "Info")
-        Start-Process "winget" -ArgumentList "upgrade --id $selectedApp -e --accept-package-agreements --accept-source-agreements" -Wait -NoNewWindow
+        [System.Windows.Forms.MessageBox]::Show("Starting update for $selectedApp. A black window will appear to show progress.", "Info")
+        Start-Process "cmd.exe" -ArgumentList "/c winget upgrade --id $selectedApp -e --accept-package-agreements --accept-source-agreements" -Wait
         [System.Windows.Forms.MessageBox]::Show("$selectedApp Updated Successfully!", "Success")
     }
 })
@@ -106,9 +107,23 @@ $btnRemoveEdge.Add_Click({
     $msg = [System.Windows.Forms.MessageBox]::Show("This will force remove Microsoft Edge from its roots. Are you sure?", "Warning", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
     if ($msg -eq 'Yes') {
         Stop-Process -Name msedge -Force -ErrorAction SilentlyContinue
-        Get-AppxPackage *MicrosoftEdge* -AllUsers | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+        
+        # الطريقة الرسمية والقوية لحذف إيدج من جذوره عبر ملف التثبيت
+        $edgePaths = @(
+            "C:\Program Files (x86)\Microsoft\Edge\Application\*\Installer\setup.exe",
+            "C:\Program Files\Microsoft\Edge\Application\*\Installer\setup.exe"
+        )
+        $installer = Resolve-Path $edgePaths -ErrorAction SilentlyContinue | Select-Object -Last 1
+        if ($installer) {
+            Start-Process -FilePath $installer.Path -ArgumentList "--uninstall --system-level --verbose-logging --force-uninstall" -Wait -NoNewWindow
+        }
+        
+        # تجاهل الأخطاء التي تظهر من تطبيقات النظام المحمية
+        Get-AppxPackage *MicrosoftEdge* -AllUsers | ForEach-Object { Remove-AppxPackage $_.PackageFullName -AllUsers -ErrorAction SilentlyContinue }
+        
         New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\EdgeUpdate" -Name "DoNotUpdateToEdgeWithChromium" -Value 1 -PropertyType DWORD -Force -ErrorAction SilentlyContinue
-        [System.Windows.Forms.MessageBox]::Show("Microsoft Edge has been successfully removed.", "Done")
+        
+        [System.Windows.Forms.MessageBox]::Show("Microsoft Edge has been successfully removed/disabled.", "Done")
     }
 })
 
